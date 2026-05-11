@@ -1272,7 +1272,7 @@ void thread_setrun(
 	     *	But first check the last processor it ran on.
 	     */
 	    processor = th->last_processor;
-	    if (processor->state == PROCESSOR_IDLE) {
+	    if (processor != PROCESSOR_NULL && processor->state == PROCESSOR_IDLE) {
 		    processor_lock(processor);
 		    pset_idle_lock();
 		    if ((processor->state == PROCESSOR_IDLE)
@@ -1334,7 +1334,7 @@ void thread_setrun(
 	     *	Bound, can only run on bound processor.  Have to lock
 	     *  processor here because it may not be the current one.
 	     */
-	    if (processor->state == PROCESSOR_IDLE) {
+	    if (processor != PROCESSOR_NULL && processor->state == PROCESSOR_IDLE) {
 		processor_lock(processor);
 		pset = processor->processor_set;
 		pset_idle_lock();

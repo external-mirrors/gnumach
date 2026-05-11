@@ -1297,7 +1297,8 @@ thread_dowait(
 		     *	should cause the thread to take an ast and
 		     *	context switch to suspend for us.
 		     */
-		    cause_ast_check(thread->last_processor);
+		    if (thread->last_processor != PROCESSOR_NULL)
+		       cause_ast_check(thread->last_processor);
 #endif	/* NCPUS > 1 */
 
 		    /*
