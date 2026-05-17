@@ -1163,6 +1163,10 @@ task_priority(
 		return KERN_INVALID_ARGUMENT;
 
 	task_lock(task);
+	if (task->max_priority > priority) {
+		task_unlock(task);
+		return KERN_NO_ACCESS;
+	}
 	task->priority = priority;
 
 	if (change_threads) {
