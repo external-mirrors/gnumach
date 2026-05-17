@@ -335,7 +335,11 @@ void thread_init(void)
 	thread_template.swap_func = thread_bootstrap_return;
 
 /*	thread_template.priority (later) */
-	thread_template.max_priority = BASEPRI_USER;
+	/*
+	 *	Set an a priori max priority, but avoid going
+	 *	higher than SYSTEM threads.
+	 */
+	thread_template.max_priority = BASEPRI_SYSTEM;
 /*	thread_template.sched_pri (later - compute_priority) */
 #if	MACH_FIXPRI
 	thread_template.sched_data = 0;
@@ -1737,6 +1741,12 @@ thread_t kernel_thread(
 	 *	The swapin mechanism might not be operational yet.
 	 */
 	thread_doswapin(thread);
+	/*
+	 *	task_create above, computed the max_priority from
+	 *	the task and processor set's max_priority.
+	 *	Since this is a kernel thread, set its max_priority
+	 *	to BASEPRI_SYSTEM.
+	 */
 	thread->max_priority = BASEPRI_SYSTEM;
 	thread->priority = BASEPRI_SYSTEM;
 	thread->sched_pri = BASEPRI_SYSTEM;

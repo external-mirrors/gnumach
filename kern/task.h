@@ -179,6 +179,12 @@ extern kern_return_t	task_assign_default(
 extern kern_return_t	task_set_name(
 	task_t			task,
 	const_kernel_debug_name_t	name);
+extern kern_return_t	task_max_priority(
+	const ipc_port_t	host,
+	task_t			task,
+	int			max_priority,
+	boolean_t		set_priority,
+	boolean_t		change_threads);
 extern void consider_task_collect(void);
 
 /*

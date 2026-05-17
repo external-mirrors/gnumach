@@ -91,8 +91,8 @@ void pset_sys_bootstrap(void)
 	default_pset.active = TRUE;
 
 	/*
-	 *	Note: the default_pset has a max_priority of BASEPRI_USER.
-	 *	Internal kernel threads override this in kernel_thread.
+	 *	Note: the default_pset has a max_priority of BASEPRI_SYSTEM
+	 *	so that privileged tasks can raise its priority later on.
 	 */
 }
 
@@ -160,7 +160,7 @@ void pset_init(
 	simple_lock_init(&pset->lock);
 	pset->pset_self = IP_NULL;
 	pset->pset_name_self = IP_NULL;
-	pset->max_priority = BASEPRI_USER;
+	pset->max_priority = BASEPRI_SYSTEM;
 #if	MACH_FIXPRI
 	pset->policies = POLICY_TIMESHARE;
 #endif	/* MACH_FIXPRI */
