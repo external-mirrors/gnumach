@@ -27,6 +27,7 @@
 
 #include <gnumach.user.h>
 #include <mach.user.h>
+#include <mach_host.user.h>
 
 
 void test_task()
@@ -160,6 +161,459 @@ int test_errors()
     ASSERT(err == MACH_SEND_INVALID_DEST, "task DEAD");
 }
 
+void test_priority()
+{
+/* XXX cannot include <kern/sched.h> for BASEPRI_* constants */
+#define BASEPRI_USER	25
+#define BASEPRI_SYSTEM	6
+
+#define DEBUG_PRINT(fmt, ...) \
+		printf("[%s:%d :: %s] " fmt, \
+			__FILE__, __LINE__, __func__, \
+			##__VA_ARGS__)
+
+	int				count;
+	kern_return_t			err;
+	processor_set_t			pset;
+	processor_set_name_t		psetn;
+	struct processor_set_sched_info	pset_sched;
+	struct task_basic_info		tk_basic;
+	struct thread_sched_info	th_sched;
+	task_t				new_task;
+	thread_t			new_thread;
+	host_t				host;
+
+	/*
+	 *	Here are short notes on what behaviour this test
+	 *	is attempting to guarantee and document how things
+	 *	should work.
+	 */
+
+	/*
+	 *	The default processor set max priority
+	 *	should be set to BASEPRI_SYSTEM.
+	 */
+	void test_default_pset_max_priority()
+	{
+		err = processor_set_default(mach_host_self(), &psetn);
+		ASSERT_RET(err, "processor_set_default failed");
+
+		count = PROCESSOR_SET_SCHED_INFO_COUNT;
+		err = processor_set_info(psetn, PROCESSOR_SET_SCHED_INFO,
+				&host, (processor_set_info_t) &pset_sched,
+				&count);
+		ASSERT_RET(err, "processor_set_info failed");
+
+		DEBUG_PRINT("(default pset) max_priority: %d\n",
+			pset_sched.max_priority);
+		ASSERT(pset_sched.max_priority == BASEPRI_SYSTEM,
+			"expecting max_priority to be BASEPRI_SYSTEM");
+	}
+	/*
+	 *	New processor sets should also get a max_priority of
+	 *	BASEPRI_SYSTEM.
+	 */
+	void test_new_pset_max_priority()
+	{
+#if	MACH_HOST
+		err = processor_set_create(mach_host_self(), &pset, &psetn);
+		ASSERT_RET(err, "processor_set_create failed");
+
+		count = PROCESSOR_SET_SCHED_INFO_COUNT;
+		err = processor_set_info(psetn, PROCESSOR_SET_SCHED_INFO,
+				&host, (processor_info_t) &pset_sched,
+				&count);
+		ASSERT_RET(err, "processor_set_info failed");
+
+		DEBUG_PRINT("(new pset) max_priority: %d\n",
+			pset_sched.max_priority);
+		ASSERT(pset_sched.max_priority == BASEPRI_SYSTEM,
+			"expecting max_priority to be BASEPRI_SYSTEM");
+
+		err = processor_set_destroy(pset);
+		ASSERT_RET(err, "processor_set_destroy failed");
+#endif
+	}
+	/*
+	 *	Since boot_script_task_create sets the max_priority
+	 *	of the task to BASEPRI_USER, check that the current
+	 *	task has the corresponding priorities.
+	 *
+	 *	The priority may be observed through task_info while the
+	 *	max priority is only observable through a thread inheriting
+	 *	it on thread create.
+	 */
+	void test_default_priorities()
+	{
+		/* Create thread as a proxy of max_priority */
+		err = thread_create(mach_task_self(), &new_thread);
+		ASSERT_RET(err, "thread_create failed");
+
+		count = TASK_BASIC_INFO_COUNT;
+		err = task_info(mach_task_self(), TASK_BASIC_INFO,
+			(task_info_t) &tk_basic, &count);
+		ASSERT_RET(err, "task_info failed");
+
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(new_thread, THREAD_SCHED_INFO,
+			(thread_info_t) &th_sched, &count);
+		ASSERT_RET(err, "thread_info failed");
+
+
+		DEBUG_PRINT("(task) base_priority: %d\n",
+			tk_basic.base_priority);
+		DEBUG_PRINT("(thread) base_priority: %d\n",
+			th_sched.base_priority);
+		DEBUG_PRINT("(thread) max_priority: %d\n",
+			th_sched.max_priority);
+		ASSERT(tk_basic.base_priority == BASEPRI_USER,
+			"(task) expected base priority of BASEPRI_USER");
+		ASSERT(th_sched.base_priority == BASEPRI_USER,
+			"(thread) expected base priority of BASEPRI_USER");
+		ASSERT(th_sched.max_priority == BASEPRI_USER,
+			"(thread) expected max priority of BASEPRI_USER");
+
+		err = thread_terminate(new_thread);
+		ASSERT_RET(err, "thread_terminate failed");
+	}
+	/*
+	 *	A task may lower its own priority. Any thread created
+	 *	afterwards shall inherit the max priority of the task.
+	 */
+	void test_task_max_priority_thread_inheritance()
+	{
+		/* Set new max priority to something we know will "win" when
+		 * compared to the procesor set max_priority and that we also
+		 * know it's different from the default.
+		 */
+		int new_max_priority = BASEPRI_USER + 5;
+
+		err = task_create(mach_task_self(), FALSE, &new_task);
+		ASSERT_RET(err, "task_create failed");
+
+		err = task_max_priority(mach_host_self(), new_task,
+			new_max_priority, TRUE, FALSE);
+		ASSERT_RET(err, "task_max_priority");
+
+		err = thread_create(new_task, &new_thread);
+		ASSERT_RET(err, "thread_create failed");
+
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(new_thread, THREAD_SCHED_INFO,
+			(thread_info_t) &th_sched, &count);
+		ASSERT_RET(err, "thread_info failed");
+
+		DEBUG_PRINT("(thread) base_priority: %d\n",
+			th_sched.base_priority);
+		DEBUG_PRINT("(thread) max_priority: %d\n",
+			th_sched.max_priority);
+		ASSERT(th_sched.base_priority == new_max_priority,
+			"(thread) expected base priority of BASEPRI_USER");
+		ASSERT(th_sched.max_priority == new_max_priority,
+			"(thread) expected max priority of BASEPRI_USER");
+
+		err = thread_terminate(new_thread);
+		ASSERT_RET(err, "thread_terminate failed");
+		err = task_terminate(new_task);
+		ASSERT_RET(err, "task_terminate failed");
+	}
+
+	/*
+	 *	A child task shall inherit the priority and max priority
+	 *	of the parent task.
+	 */
+	void test_task_priority_inheritance()
+	{
+		/* Same rationale as the previous test */
+		int max_priority = BASEPRI_USER + 5;
+		task_t child_task;
+
+		err = task_create(mach_task_self(), FALSE, &new_task);
+		ASSERT_RET(err, "task_create failed");
+
+		err = task_max_priority(mach_host_self(), new_task,
+			max_priority, TRUE, FALSE);
+		ASSERT_RET(err, "task_max_priority");
+
+		/* Create the child task to check priority inheritance */
+		err = task_create(new_task, FALSE, &child_task);
+		ASSERT_RET(err, "task_create failed");
+
+		/* Create thread as a proxy of max_priority */
+		err = thread_create(child_task, &new_thread);
+		ASSERT_RET(err, "thread_create failed");
+
+		count = TASK_BASIC_INFO_COUNT;
+		err = task_info(child_task, TASK_BASIC_INFO,
+			(task_info_t) &tk_basic, &count);
+		ASSERT_RET(err, "task_info failed");
+
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(new_thread, THREAD_SCHED_INFO,
+			(thread_info_t) &th_sched, &count);
+		ASSERT_RET(err, "thread_info failed");
+
+
+		DEBUG_PRINT("(task) base_priority: %d\n",
+			tk_basic.base_priority);
+		DEBUG_PRINT("(thread) base_priority: %d\n",
+			th_sched.base_priority);
+		DEBUG_PRINT("(thread) max_priority: %d\n",
+			th_sched.max_priority);
+		ASSERT(tk_basic.base_priority == max_priority,
+			"(task) expected base priority of BASEPRI_USER + 5");
+		ASSERT(th_sched.base_priority == max_priority,
+			"(thread) expected base priority of BASEPRI_USER + 5");
+		ASSERT(th_sched.max_priority == max_priority,
+			"(thread) expected max priority of BASEPRI_USER + 5");
+
+		err = thread_terminate(new_thread);
+		ASSERT_RET(err, "thread_terminate failed");
+		err = task_terminate(child_task);
+		ASSERT_RET(err, "task_terminate failed");
+		err = task_terminate(new_task);
+		ASSERT_RET(err, "task_terminate failed");
+	}
+
+	/*
+	 *	A non-privileged task shall not be able to raise its max_priority
+	 *	nor its priority above its current max_priority.
+	 */
+	void test_task_priority_non_privileged()
+	{
+		/* Set max_priority to something below the current max */
+		int max_priority = BASEPRI_USER - 10;
+		/* Set priority to something below the current max */
+		int priority = BASEPRI_USER - 5;
+
+		/* Prepare a new clean task to test priority permissions */
+		err = task_create(mach_task_self(), FALSE, &new_task);
+		ASSERT_RET(err, "task_create failed");
+
+		err = task_priority(new_task, priority, FALSE);
+		ASSERT(err == KERN_NO_ACCESS, "(task) raising priority shall fail");
+		err = task_max_priority(mach_host_self(), new_task,
+			max_priority, TRUE, FALSE);
+		ASSERT(err == KERN_NO_ACCESS, "(task) raising max priority shall fail");
+
+		err = task_terminate(new_task);
+		ASSERT_RET(err, "task_terminate failed");
+	}
+
+	/*
+	 *	A privileged task shall be able to raise its max_priority
+	 *	above its current max_priority.
+	 */
+	void test_task_priority_privileged()
+	{
+		/* Set max_priority to something below the current max */
+		int max_priority = BASEPRI_USER - 10;
+		/*
+		 * setting priority to this value should succeed after
+		 * setting max_priority
+		 */
+		int priority = BASEPRI_USER - 5;
+
+		/* Prepare a new clean task to test priority permissions */
+		err = task_create(mach_task_self(), FALSE, &new_task);
+		ASSERT_RET(err, "task_create failed");
+
+		/* Start testing privileged priority setting */
+		err = task_max_priority(host_priv(), new_task,
+			max_priority, FALSE, FALSE);
+		ASSERT_RET(err, "(task) raising the max_priority shall succeed");
+		err = task_priority(new_task, priority, FALSE);
+		ASSERT_RET(err, "(task) raising priority below max_priority shall succeed");
+
+		/* Create thread as a proxy of max_priority */
+		err = thread_create(new_task, &new_thread);
+		ASSERT_RET(err, "thread_create failed");
+
+		count = TASK_BASIC_INFO_COUNT;
+		err = task_info(new_task, TASK_BASIC_INFO,
+			(task_info_t) &tk_basic, &count);
+		ASSERT_RET(err, "task_info failed");
+
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(new_thread, THREAD_SCHED_INFO,
+			(thread_info_t) &th_sched, &count);
+		ASSERT_RET(err, "thread_info failed");
+
+		DEBUG_PRINT("(task) base_priority: %d\n",
+			tk_basic.base_priority);
+		DEBUG_PRINT("(thread) base_priority: %d\n",
+			th_sched.base_priority);
+		DEBUG_PRINT("(thread) max_priority: %d\n",
+			th_sched.max_priority);
+		ASSERT(tk_basic.base_priority == priority,
+			"(task) expected base priority of BASEPRI_USER - 5");
+		ASSERT(th_sched.base_priority == priority,
+			"(thread) expected base priority of BASEPRI_USER - 5");
+		ASSERT(th_sched.max_priority == max_priority,
+			"(thread) expected max priority of BASEPRI_USER - 10");
+
+		err = thread_terminate(new_thread);
+		ASSERT_RET(err, "thread_terminate failed");
+		err = task_terminate(new_task);
+		ASSERT_RET(err, "task_terminate failed");
+	}
+
+	/*
+	 *	The processor set max priority must act as a ceiling
+	 *	of task priorities at the time that thread_create is
+	 *	called.
+	 */
+	void test_pset_ceiling()
+	{
+		/* Set max priority above PSET default */
+		int new_max_priority = BASEPRI_SYSTEM - 1;
+
+		err = task_create(mach_task_self(), FALSE, &new_task);
+		ASSERT_RET(err, "task_create failed");
+
+		err = task_max_priority(host_priv(), new_task,
+			new_max_priority, TRUE, FALSE);
+		ASSERT_RET(err, "task_max_priority failed");
+
+		/* Create new thread to check its priority/max_priority */
+		err = thread_create(new_task, &new_thread);
+		ASSERT_RET(err, "thread_create failed");
+
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(new_thread, THREAD_SCHED_INFO,
+			(thread_info_t) &th_sched, &count);
+		ASSERT_RET(err, "thread_info failed");
+
+		DEBUG_PRINT("(thread) base_priority: %d\n",
+			th_sched.base_priority);
+		DEBUG_PRINT("(thread) max_priority: %d\n",
+			th_sched.max_priority);
+		ASSERT(th_sched.base_priority == BASEPRI_SYSTEM,
+			"(thread) expected base priority of BASEPRI_SYSTEM");
+		ASSERT(th_sched.max_priority == BASEPRI_SYSTEM,
+			"(thread) expected max priority of BASEPRI_SYSTEM");
+
+		err = thread_terminate(new_thread);
+		ASSERT_RET(err, "thread_terminate failed");
+		err = task_terminate(new_task);
+		ASSERT_RET(err, "task_terminate failed");
+	}
+
+	/*
+	 *	Passing TRUE to change_threads should update
+	 *	the max priority of the current task's threads.
+	 */
+	void test_updating_threads_max_priority()
+	{
+		thread_t t1, t2;
+		struct thread_sched_info ths1, ths2;
+
+		/* new priority to test task_priority */
+		int new_priority = BASEPRI_USER + 5;
+		/* new max priority to test task_max_priority */
+		int new_max_priority = BASEPRI_USER - 5;
+
+		err = task_create(mach_task_self(), TRUE, &new_task);
+		ASSERT_RET(err, "task_create failed");
+
+
+		/* Test lowering threads priorities */
+		err = thread_create(new_task, &t1);
+		ASSERT_RET(err, "thread_create failed");
+		err = thread_create(new_task, &t2);
+		ASSERT_RET(err, "thread_create failed");
+
+		err = task_priority(new_task, new_priority, TRUE);
+		ASSERT_RET(err, "task_priority failed");
+
+		/* Check effects */
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(t1, THREAD_SCHED_INFO,
+			(thread_info_t) &ths1, &count);
+		ASSERT_RET(err, "thread_info failed");
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(t2, THREAD_SCHED_INFO,
+			(thread_info_t) &ths2, &count);
+		ASSERT_RET(err, "thread_info failed");
+
+		DEBUG_PRINT("(t1) base_priority %d\n", ths1.base_priority);
+		DEBUG_PRINT("(t1) max_priority %d\n", ths1.max_priority);
+		DEBUG_PRINT("(t2) base_priority %d\n", ths2.base_priority);
+		DEBUG_PRINT("(t2) max_priority %d\n", ths2.max_priority);
+		ASSERT(ths1.base_priority == new_priority,
+			"(t1) expecting priority BASEPRI_USER + 5");
+		ASSERT(ths1.max_priority == BASEPRI_USER,
+			"(t1) expecting priority BASEPRI_USER");
+		ASSERT(ths2.base_priority == new_priority,
+			"(t2) expecting priority BASEPRI_USER + 5");
+		ASSERT(ths2.max_priority == BASEPRI_USER,
+			"(t2) expecting priority BASEPRI_USER");
+
+		/* Clean up */
+		err = thread_terminate(t1);
+		ASSERT_RET(err, "thread_terminate failed");
+		err = thread_terminate(t2);
+		ASSERT_RET(err, "thread_terminate failed");
+
+		/* Test raising priorities */
+		err = thread_create(new_task, &t1);
+		ASSERT_RET(err, "thread_create failed");
+		err = thread_create(new_task, &t2);
+		ASSERT_RET(err, "thread_create failed");
+
+		err = task_max_priority(host_priv(), new_task,
+			new_max_priority, TRUE, TRUE);
+		ASSERT_RET(err, "task_max_priority failed");
+
+		/* Check effects */
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(t1, THREAD_SCHED_INFO,
+			(thread_info_t) &ths1, &count);
+		ASSERT_RET(err, "thread_info failed");
+		count = THREAD_SCHED_INFO_COUNT;
+		err = thread_info(t2, THREAD_SCHED_INFO,
+			(thread_info_t) &ths2, &count);
+		ASSERT_RET(err, "thread_info failed");
+
+		DEBUG_PRINT("(t1) base_priority %d\n", ths1.base_priority);
+		DEBUG_PRINT("(t1) max_priority %d\n", ths1.max_priority);
+		DEBUG_PRINT("(t2) base_priority %d\n", ths2.base_priority);
+		DEBUG_PRINT("(t2) max_priority %d\n", ths2.max_priority);
+		ASSERT(ths1.base_priority == new_max_priority,
+			"(t1) expecting priority BASEPRI_USER - 5");
+		ASSERT(ths1.max_priority == new_max_priority,
+			"(t1) expecting priority BASEPRI_USER - 5");
+		ASSERT(ths2.base_priority == new_max_priority,
+			"(t2) expecting priority BASEPRI_USER - 5");
+		ASSERT(ths2.max_priority == new_max_priority,
+			"(t2) expecting priority BASEPRI_USER - 5");
+
+		/* Clean up and exit*/
+		err = thread_terminate(t1);
+		ASSERT_RET(err, "thread_terminate failed");
+		err = thread_terminate(t2);
+		ASSERT_RET(err, "thread_terminate failed");
+
+		err = task_terminate(new_task);
+		ASSERT_RET(err, "task_terminate failed");
+	}
+
+	/*
+	 *	Call the tests
+	 */
+	test_default_pset_max_priority();
+	test_new_pset_max_priority();
+	test_default_priorities();
+	test_task_max_priority_thread_inheritance();
+	test_task_priority_inheritance();
+	test_task_priority_non_privileged();
+	test_task_priority_privileged();
+	test_pset_ceiling();
+	test_updating_threads_max_priority();
+#undef DEBUG_PRINT
+#undef BASEPRI_USER
+#undef BASEPRI_SYSTEM
+}
 
 int main(int argc, char *argv[], int envc, char *envp[])
 {
@@ -167,5 +621,6 @@ int main(int argc, char *argv[], int envc, char *envp[])
   test_task_threads();
   test_new_task();
   test_errors();
+  test_priority();
   return 0;
 }
