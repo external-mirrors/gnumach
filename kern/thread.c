@@ -499,6 +499,7 @@ kern_return_t thread_create(
 	 */
 
 	new_thread->priority = parent_task->priority;
+	new_thread->max_priority = parent_task->max_priority;
 	if (pset->max_priority > new_thread->max_priority)
 		new_thread->max_priority = pset->max_priority;
 	if (new_thread->max_priority > new_thread->priority)

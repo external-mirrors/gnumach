@@ -80,6 +80,7 @@ struct task {
 	/* User-visible scheduling information */
 	int		user_stop_count;	/* outstanding stops */
 	int		priority;		/* for new threads */
+	int		max_priority;		/* for task iheritance and new thrads */
 
 	/* Statistics */
 	time_value64_t	total_user_time;

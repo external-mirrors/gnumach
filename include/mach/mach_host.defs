@@ -400,3 +400,24 @@ routine	host_get_uptime64(
 routine processor_set_processors(
 		set_name	: processor_set_name_t;
 	out	processors_list	: processor_name_array_t);
+
+/*
+ *	Set the task max priority to max_priority.
+ *
+ *	If set_priority is TRUE, the task priority is
+ *	also set to follow max_priority.
+ *
+ *	Regardless the value of set_priority, if the
+ *	max_priority is lower than the current priority
+ *	then the task priority is lowered to max_priority.
+ *
+ *	If change_threads is TRUE, the resulting parameters
+ *	of the task, max_priority and priority, are propagated
+ *	to the current threads of the task.
+ */
+routine task_max_priority(
+		host		: mach_port_t;
+		task		: task_t;
+		max_priority	: int;
+		set_priority	: boolean_t;
+		change_threads	: boolean_t);

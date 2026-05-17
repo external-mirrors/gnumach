@@ -5235,6 +5235,27 @@ priority of at least one existing thread failed because the new priority
 would have exceeded that thread's maximum priority.
 @end deftypefun
 
+@deftypefun kern_return_t task_max_priority (@w{mach_port_t @var{host}}, @w{task_t @var{task}}, @w{int @var{max_priority}}, @w{boolean_t @var{set_priority}}, @w{boolean_t @var{change_threads}})
+The max priority of a task is used to initialize the max priority of a thread
+when it is created. It starts as the task's max priority and is then restricted
+by the processor set max priority, the lower of them wins.
+
+@code{task_max_priority} is used to set the task max priority to the value passed
+in the @var{max_priority} argument. If @var{set_priority} is @code{TRUE}, the
+priority of the task is also set to @var{max_priority}. When @var{max_priority}
+is lower than the current max priority, the task @var{priority} is set to
+@var{max_priority} regardless of the value of @var{set_priority}. Just like
+@code{task_priority}, when the argument @var{chage_threads} is @code{TRUE}, all
+currently existing threads of the task will have its max priority and priority
+updated.
+
+The function returns @code{KERN_SUCCESS} if the call succeeded,
+@code{KERN_INVALID_ARGUMENT} when the @var{host} port is not valid, the @var{task}
+port is null or the @var{max_priority} is an invalid priority argument.
+@code{KERN_NO_ACCESS} is returned when @var{max_priority} would raise the max
+priority above the current one and the @var{host} is not the privileged host port.
+@end deftypefun
+
 @deftypefun kern_return_t task_ras_control (@w{task_t @var{target_task}}, @w{vm_address_t @var{start_pc}}, @w{vm_address_t @var{end_pc}}, @w{int @var{flavor}})
 The function @code{task_ras_control} manipulates a task's set of
 restartable atomic sequences.  If a sequence is installed, and any

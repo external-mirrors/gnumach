@@ -40,6 +40,7 @@
 #include <mach_debug/mach_debug_types.h>
 #include <ipc/ipc_space.h>
 #include <ipc/ipc_types.h>
+#include <kern/assert.h>
 #include <kern/debug.h>
 #include <kern/task.h>
 #include <kern/thread.h>
@@ -171,12 +172,18 @@ task_create_kernel(
 			pset = &default_pset;
 		pset_reference(pset);
 		new_task->priority = parent_task->priority;
+		new_task->max_priority = parent_task->max_priority;
+		/* at this point max_priority/priority must be valid */
+		assert(new_task->priority >= new_task->max_priority);
 		task_unlock(parent_task);
 	}
 	else {
 		pset = &default_pset;
 		pset_reference(pset);
 		new_task->priority = BASEPRI_USER;
+		new_task->max_priority = pset->max_priority;
+		if (new_task->max_priority > new_task->priority)
+			new_task->priority = new_task->max_priority;
 	}
 	pset_lock(pset);
 	pset_add_task(pset, new_task);
@@ -1374,4 +1381,106 @@ register_new_task_notification(
 
 	new_task_notification = notification;
 	return KERN_SUCCESS;
+}
+
+/*
+ *	thread_override_max_priority:
+ *
+ *	Sets the max priority of the given threead.
+ *	Will adjust priority if necessary or requested.
+ *
+ *	However, it will not rise above the processor set
+ *	max priority.
+ */
+static kern_return_t
+thread_override_max_priority(
+	thread_t	thread,
+	int		max_priority,
+	boolean_t	set_priority)
+{
+	spl_t	s;
+
+	s = splsched();
+	thread_lock(thread);
+
+	thread->max_priority = max_priority;
+	if (thread->processor_set->max_priority > max_priority)
+		thread->max_priority = thread->processor_set->max_priority;
+	if ((thread->max_priority > thread->priority) || (set_priority == TRUE))
+		thread->priority = thread->max_priority;
+
+	compute_priority(thread, TRUE);
+
+	thread_unlock(thread);
+	(void) splx(s);
+
+	return KERN_SUCCESS;
+}
+
+static
+ipc_kobject_type_t extract_host_type(const ipc_port_t port)
+{
+	ipc_kobject_type_t ikot = IKOT_NONE;
+
+	if (!IP_VALID(port))
+		return IKOT_NONE;
+
+	ip_lock(port);
+	if (ip_active(port))
+		ikot = ip_kotype(port);
+	ip_unlock(port);
+
+	if (ikot != IKOT_HOST && ikot != IKOT_HOST_PRIV)
+		ikot = IKOT_NONE;
+
+	return ikot;
+}
+
+/*
+ *	task_max_priority:
+ *
+ *	Reset the max priority for a task.
+ */
+kern_return_t
+task_max_priority(
+	const ipc_port_t	host,
+	task_t			task,
+	int			max_priority,
+	boolean_t		set_priority,
+	boolean_t		change_threads)
+{
+	kern_return_t ret = KERN_SUCCESS;
+	ipc_kobject_type_t ikot_host = extract_host_type(host);
+
+	if ((ikot_host == IKOT_NONE) || (task == TASK_NULL) ||
+			invalid_pri(max_priority))
+		return KERN_INVALID_ARGUMENT;
+
+	task_lock(task);
+
+	if ((max_priority < task->max_priority) &&
+			(ikot_host != IKOT_HOST_PRIV)) {
+		task_unlock(task);
+		return KERN_NO_ACCESS;
+	}
+
+	task->max_priority = max_priority;
+	if ((max_priority > task->priority) || (set_priority == TRUE))
+		task->priority = max_priority;
+
+	if (change_threads == TRUE) {
+		thread_t	thread;
+		queue_head_t	*list;
+
+		list = &task->thread_list;
+		queue_iterate(list, thread, thread_t, thread_list) {
+			if (thread_override_max_priority(
+					thread, max_priority,
+					set_priority) != KERN_SUCCESS)
+				ret = KERN_FAILURE;
+		}
+	}
+
+	task_unlock(task);
+	return ret;
 }
