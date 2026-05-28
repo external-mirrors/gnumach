@@ -64,6 +64,7 @@
 #include <device/disk_status.h>
 #include <device/device_reply.user.h>
 #include <device/device_emul.h>
+#include <device/device_types.h>
 #include <device/ds_routines.h>
 
 /* TODO.  This should be fixed to not be i386 specific.  */
@@ -1729,6 +1730,7 @@ device_set_status (void *d, dev_flavor_t flavor, dev_status_t status,
 
   switch (flavor)
     {
+      case DEV_FLUSH_CACHE:
       case BLKRRPART:
 	{
 	  DECL_DATA;
