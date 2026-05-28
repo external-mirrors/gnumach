@@ -58,6 +58,8 @@
 #define WIN_MULTREAD		0xC4	/* read sectors using multiple mode */
 #define WIN_MULTWRITE		0xC5	/* write sectors using multiple mode */
 #define WIN_SETMULT		0xC6	/* enable/disable multiple mode */
+#define WIN_FLUSH_CACHE		0xE7
+#define WIN_FLUSH_CACHE_EXT	0xEA	/* 48-Bit */
 #define WIN_IDENTIFY		0xEC	/* ask drive to identify itself	*/
 #define WIN_SETFEATURES		0xEF	/* set special drive features */
 #define WIN_READDMA		0xc8	/* read sectors using DMA transfers */

@@ -302,6 +302,8 @@
 #include <linux/genhd.h>
 #include <linux/malloc.h>
 
+#include <device/device_types.h>
+
 #include <ahci.h>
 
 #include <asm/byteorder.h>
@@ -2385,6 +2387,13 @@ static int ide_ioctl (struct inode *inode, struct file *file,
 			restore_flags(flags);
 			(void) ide_do_drive_cmd (drive, &rq, ide_wait);
 			return 0;
+		case DEV_FLUSH_CACHE:
+		{
+			byte flush[] = {WIN_FLUSH_CACHE,0,0,0};
+			rq.buffer = (char *)flush;
+			err = ide_do_drive_cmd (drive, &rq, ide_wait);
+			return err;
+		}
 
 		RO_IOCTLS(inode->i_rdev, arg);
 
