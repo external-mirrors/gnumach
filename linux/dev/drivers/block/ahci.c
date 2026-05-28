@@ -28,6 +28,8 @@
 #include <linux/genhd.h>
 #include <asm/io.h>
 
+#include <device/device_types.h>
+
 #define MAJOR_NR SCSI_DISK_MAJOR
 #include <linux/blk.h>
 
@@ -250,8 +252,19 @@ static struct port {
 	unsigned lba48;			/* Whether LBA48 is supported */
 	unsigned identify;		/* Whether we are just identifying
 					   at boot */
+	unsigned flush;			/* Whether we are flushing */
 	struct gendisk *gd;
 } ports[MAX_PORTS];
+
+/* Disk timed out while processing command, interrupt operation */
+static void command_timeout(unsigned long data)
+{
+	struct port *port = (void*) data;
+
+	wake_up(&port->q);
+}
+
+static struct timer_list command_timer = { .function = command_timeout };
 
 
 /* do_request() gets called by the block layer to push a request to the disk.
@@ -428,10 +441,72 @@ kill_rq:
 	ahci_end_request(0);
 }
 
+/* Push the request to the controler port */
+static int ahci_do_flush(struct port *port)
+{
+	struct ahci_command *command = port->command;
+	struct ahci_cmd_tbl *prdtl = port->prdtl;
+	struct ahci_fis_h2d *fis_h2d;
+	unsigned slot = 1;
+	unsigned long flags;
+	unsigned long long timeout;
+
+	fis_h2d = (void*) &prdtl[slot].cfis;
+	fis_h2d->fis_type = FIS_TYPE_REG_H2D;
+	fis_h2d->flags = 128;
+	if (port->lba48) {
+		fis_h2d->command = WIN_FLUSH_CACHE_EXT;
+	} else {
+		fis_h2d->command = WIN_FLUSH_CACHE;
+	}
+
+	fis_h2d->device = 0;
+
+	command[slot].opts = sizeof(*fis_h2d) / sizeof(u32);
+
+	port->flush = 1;
+
+	save_flags(flags);
+	cli();
+
+	/* Make sure main memory buffers are up to date */
+	mb();
+	/* Issue command */
+	writel(1 << slot, &port->ahci_port->ci);
+
+	timeout = jiffies + WAIT_MAX;
+	command_timer.expires = timeout;
+	command_timer.data = (unsigned long) port;
+	add_timer(&command_timer);
+	while (readl(&port->ahci_port->ci) & (1 << slot)) {
+		if (jiffies >= timeout) {
+			printk("sd%u: timeout waiting for flush\n", port-ports);
+			port->ahci_host = NULL;
+			port->ahci_port = NULL;
+			del_timer(&command_timer);
+			port->flush = 0;
+			restore_flags(flags);
+			return -EIO;
+		}
+		sleep_on(&port->q);
+	}
+	del_timer(&command_timer);
+	restore_flags(flags);
+
+	port->flush = 0;
+
+	return 0;
+}
+
 /* The given port got an interrupt, terminate the current request if any */
 static void ahci_port_interrupt(struct port *port, u32 status)
 {
 	unsigned slot = 0;
+
+	if (port->flush && !(readl(&port->ahci_port->ci) & (1 << 1))) {
+		/* Flush done */
+		wake_up(&port->q);
+	}
 
 	if (readl(&port->ahci_port->ci) & (1 << slot)) {
 		/* Command still pending */
@@ -502,7 +577,7 @@ static int ahci_ioctl (struct inode *inode, struct file *file,
 	if (major != MAJOR_NR)
 		return -ENOTTY;
 
-	unit = DEVICE_NR(inode->i_rdev);
+	unit = MINOR(inode->i_rdev) >> PARTN_BITS;
 	if (unit >= MAX_PORTS)
 		return -EINVAL;
 
@@ -513,6 +588,11 @@ static int ahci_ioctl (struct inode *inode, struct file *file,
 				return -EINVAL;
 			resetup_one_dev(ports[unit].gd, unit);
 			return 0;
+		case DEV_FLUSH_CACHE:
+			if (!suser()) return -EACCES;
+			if (!ports[unit].gd)
+				return -EINVAL;
+			return ahci_do_flush(&ports[unit]);
 		default:
 			return -EPERM;
 	}
@@ -541,8 +621,7 @@ static void ahci_release (struct inode *inode, struct file *file)
 
 static int ahci_fsync (struct inode *inode, struct file *file)
 {
-	printk("fsync\n");
-	return -ENOSYS;
+	return ahci_ioctl(inode, file, DEV_FLUSH_CACHE, 0);
 }
 
 static struct file_operations ahci_fops = {
@@ -560,16 +639,6 @@ static struct file_operations ahci_fops = {
 	.check_media_change = NULL,
 	.revalidate = NULL,
 };
-
-/* Disk timed out while processing identify, interrupt ahci_probe_port */
-static void identify_timeout(unsigned long data)
-{
-	struct port *port = (void*) data;
-
-	wake_up(&port->q);
-}
-
-static struct timer_list identify_timer = { .function = identify_timeout };
 
 static int ahci_identify(const volatile struct ahci_host *ahci_host, const volatile struct ahci_port *ahci_port, struct port *port, unsigned cmd)
 {
@@ -642,22 +711,24 @@ static int ahci_identify(const volatile struct ahci_host *ahci_host, const volat
 	writel(1 << slot, &ahci_port->ci);
 
 	timeout = jiffies + WAIT_MAX;
-	identify_timer.expires = timeout;
-	identify_timer.data = (unsigned long) port;
-	add_timer(&identify_timer);
+	command_timer.expires = timeout;
+	command_timer.data = (unsigned long) port;
+	add_timer(&command_timer);
 	while (!port->status) {
 		if (jiffies >= timeout) {
-                       printk("sd%u: timeout waiting for identify\n", port-ports);
+			printk("sd%u: timeout waiting for identify\n", port-ports);
 			port->ahci_host = NULL;
 			port->ahci_port = NULL;
-			del_timer(&identify_timer);
+			port->identify = 0;
+			del_timer(&command_timer);
 			restore_flags(flags);
 			return 3;
 		}
 		sleep_on(&port->q);
 	}
-	del_timer(&identify_timer);
+	del_timer(&command_timer);
 	restore_flags(flags);
+	port->identify = 0;
 
 	if ((port->status & PORT_IRQ_TF_ERR) || readl(&ahci_port->is) & PORT_IRQ_TF_ERR)
 	{
@@ -719,7 +790,6 @@ static int ahci_identify(const volatile struct ahci_host *ahci_host, const volat
 		else
 			printk("sd%u: %s, %uMB w/%dkB Cache\n", (unsigned) (port - ports), id.model, (unsigned) (port->capacity/2048), id.buf_size/2);
 	}
-	port->identify = 0;
 
 	return ret;
 }
