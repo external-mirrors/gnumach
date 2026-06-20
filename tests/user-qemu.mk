@@ -173,6 +173,7 @@ tests/module-%: $(srcdir)/tests/test-%.c $(SRC_TESTLIB) $(MACH_TESTINSTALL)
 # packaging of qemu bootable image and test runner
 #
 
+GRUB_MKRESCUE ?= grub-mkrescue
 GNUMACH_ARGS = console=com0
 QEMU_OPTS = -m 2047 -nographic -no-reboot -boot d
 QEMU_GDB_PORT ?= 1234
@@ -199,7 +200,7 @@ tests/test-%.iso: tests/module-% $(GNUMACH) $(srcdir)/tests/grub.cfg.single.temp
 		>$(builddir)/tests/isofiles-$*/boot/grub/grub.cfg
 	cp $(GNUMACH) $(builddir)/tests/isofiles-$*/boot/gnumach
 	cp $< $(builddir)/tests/isofiles-$*/boot/
-	grub-mkrescue -o $@ $(builddir)/tests/isofiles-$*
+	$(GRUB_MKRESCUE) -o $@ $(builddir)/tests/isofiles-$*
 	rm -rf $(builddir)/tests/isofiles-$*
 
 tests/test-%: tests/test-%.iso $(srcdir)/tests/run-qemu.sh.template
