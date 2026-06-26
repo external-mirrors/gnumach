@@ -30,7 +30,7 @@ jobs:
           mkdir gnu32
           mkdir build32
           cd build32
-          ../configure --prefix= --host=i686-gnu LD=i686-linux-gnu-ld CC=i686-linux-gnu-gcc \
+          ../configure --prefix= --host=i686-gnu LD="x86_64-linux-gnu-ld -melf_i386" CC="x86_64-linux-gnu-gcc -m32" \
                   --disable-linux-groups \
                   ${{ matrix.platform }} \
                   ${{ matrix.kdb }}
@@ -41,14 +41,14 @@ jobs:
           mkdir build32
           cd build32
           GNU=$(realpath ../../gnu32)
-          TARGET_CPPFLAGS=-I"$GNU"/include TARGET_CC=i686-linux-gnu-gcc ../configure --prefix="$GNU" --target=i686-gnu
+          TARGET_CPPFLAGS=-I"$GNU"/include TARGET_CC="x86_64-linux-gnu-gcc -m32" TARGET_LD="x86_64-linux-gnu-ld -melf_i386" ../configure --prefix="$GNU" --target=i686-gnu
           make all install
           PATH=$PATH:$GNU/bin
           cd ../..
           cd build32
           CCASFLAGS="-fdebug-prefix-map=$PWD=." CFLAGS="-ffile-prefix-map=$PWD=." \
           ../configure --prefix= --host=i686-gnu \
-                  MIG=i686-gnu-mig LD=i686-linux-gnu-ld CC=i686-linux-gnu-gcc \
+                  MIG=i686-gnu-mig LD="x86_64-linux-gnu-ld -melf_i386" CC="x86_64-linux-gnu-gcc -m32" \
                   --disable-linux-groups \
                   ${{ matrix.platform }} \
                   ${{ matrix.kdb }}
@@ -76,8 +76,12 @@ jobs:
           autoreconf -fi
           if [ ${{ matrix.user32 }} == '--enable-user32' ]; then
             USER_H=i686
+            USER_ELF=-melf_i386
+            USER_M32=-m32
           else
             USER_H=x86_64
+            USER_ELF=""
+            USER_M32=""
           fi
           mkdir gnu64
           mkdir build64
@@ -101,7 +105,7 @@ jobs:
             # We need both migs
             mkdir build32
             cd build32
-            TARGET_CPPFLAGS=-I"$GNU"/include TARGET_CC=i686-linux-gnu-gcc ../configure --prefix="$GNU" --target=i686-gnu
+            TARGET_CPPFLAGS=-I"$GNU"/include TARGET_CC="x86_64-linux-gnu-gcc -m32" TARGET_LD="x86_64-linux-gnu-ld -melf_i386" ../configure --prefix="$GNU" --target=i686-gnu
             make all install
             cd ..
           fi
@@ -111,7 +115,7 @@ jobs:
           CCASFLAGS="-fdebug-prefix-map=$PWD=." CFLAGS="-ffile-prefix-map=$PWD=." \
           ../configure --prefix= --host=x86_64-gnu \
                   MIG=x86_64-gnu-mig LD=x86_64-linux-gnu-ld CC=x86_64-linux-gnu-gcc \
-                  USER_MIG=${USER_H}-gnu-mig USER_CC=${USER_H}-linux-gnu-gcc USER_CPP="${USER_H}-linux-gnu-gcc -E" \
+                  USER_MIG=${USER_H}-gnu-mig USER_CC="x86_64-linux-gnu-gcc ${USER_M32}" USER_LD="x86_64-linux-gnu-ld ${USER_ELF}" USER_CPP="x86_64-linux-gnu-gcc ${USER_M32} -E" \
                   --disable-linux-groups \
                   ${{ matrix.platform }} \
                   ${{ matrix.user32 }} \
