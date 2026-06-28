@@ -628,7 +628,8 @@ kern_return_t vm_allocate_contiguous(
 	if (pmax > VM_PAGE_DMA32_LIMIT)
 #endif
 #endif
-		if (pmax <= VM_PAGE_HIGHMEM_LIMIT)
+		/* Do not even try to check for largest limit, we will truncate anyway */
+		/* if (pmax <= VM_PAGE_HIGHMEM_LIMIT) */
 			selector = VM_PAGE_SEL_HIGHMEM;
 
 	size = vm_page_round(size);
