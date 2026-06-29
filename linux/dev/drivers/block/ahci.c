@@ -467,10 +467,14 @@ static int ahci_do_flush(struct port *port)
 
 	command[slot].opts = sizeof(*fis_h2d) / sizeof(u32);
 
-	port->flush = 1;
-
 	save_flags(flags);
 	cli();
+
+	while (port->flush)
+		/* Another flush is pending, wait for it.  */
+		sleep_on(&port->q);
+
+	port->flush = 1;
 
 	/* Make sure main memory buffers are up to date */
 	mb();
@@ -494,9 +498,10 @@ static int ahci_do_flush(struct port *port)
 		sleep_on(&port->q);
 	}
 	del_timer(&port->command_timer);
-	restore_flags(flags);
 
 	port->flush = 0;
+	wake_up(&port->q);
+	restore_flags(flags);
 
 	return 0;
 }
