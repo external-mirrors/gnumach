@@ -42,6 +42,9 @@
 #define PARTN_BITS 5
 #define PARTN_MASK ((1<<PARTN_BITS)-1)
 
+#define DATA_SLOT 0
+#define CMD_SLOT 1
+
 /* We need to use one DMA scatter element per physical page.
  * ll_rw_block creates at most 8 buffer heads */
 /* See MAX_BUF */
@@ -306,7 +309,7 @@ static int ahci_do_port_request(struct port *port, unsigned long long sector, st
 	struct ahci_command *command = port->command;
 	struct ahci_cmd_tbl *prdtl = port->prdtl;
 	struct ahci_fis_h2d *fis_h2d;
-	unsigned slot = 0;
+	unsigned slot = DATA_SLOT;
 	struct buffer_head *bh;
 	unsigned i;
 
@@ -447,7 +450,7 @@ static int ahci_do_flush(struct port *port)
 	struct ahci_command *command = port->command;
 	struct ahci_cmd_tbl *prdtl = port->prdtl;
 	struct ahci_fis_h2d *fis_h2d;
-	unsigned slot = 1;
+	unsigned slot = CMD_SLOT;
 	unsigned long flags;
 	unsigned long long timeout;
 
@@ -501,14 +504,12 @@ static int ahci_do_flush(struct port *port)
 /* The given port got an interrupt, terminate the current request if any */
 static void ahci_port_interrupt(struct port *port, u32 status)
 {
-	unsigned slot = 0;
-
-	if (port->flush && !(readl(&port->ahci_port->ci) & (1 << 1))) {
+	if (port->flush && !(readl(&port->ahci_port->ci) & (1 << CMD_SLOT))) {
 		/* Flush done */
 		wake_up(&port->q);
 	}
 
-	if (readl(&port->ahci_port->ci) & (1 << slot)) {
+	if (readl(&port->ahci_port->ci) & (1 << DATA_SLOT)) {
 		/* Command still pending */
 		return;
 	}
@@ -654,7 +655,7 @@ static int ahci_identify(const volatile struct ahci_host *ahci_host, const volat
 
 	/* Identify device */
 	/* TODO: make this a request */
-	slot = 0;
+	slot = DATA_SLOT;
 
 	fis_h2d = (void*) &prdtl[slot].cfis;
 	fis_h2d->fis_type = FIS_TYPE_REG_H2D;
