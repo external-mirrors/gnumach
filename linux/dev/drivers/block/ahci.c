@@ -257,6 +257,8 @@ static struct port {
 					   at boot */
 	unsigned flush;			/* Whether we are flushing */
 	struct gendisk *gd;
+
+	struct timer_list command_timer;
 } ports[MAX_PORTS];
 
 /* Disk timed out while processing command, interrupt operation */
@@ -266,8 +268,6 @@ static void command_timeout(unsigned long data)
 
 	wake_up(&port->q);
 }
-
-static struct timer_list command_timer = { .function = command_timeout };
 
 
 /* do_request() gets called by the block layer to push a request to the disk.
@@ -478,22 +478,22 @@ static int ahci_do_flush(struct port *port)
 	writel(1 << slot, &port->ahci_port->ci);
 
 	timeout = jiffies + WAIT_MAX;
-	command_timer.expires = timeout;
-	command_timer.data = (unsigned long) port;
-	add_timer(&command_timer);
+	port->command_timer.expires = timeout;
+	port->command_timer.data = (unsigned long) port;
+	add_timer(&port->command_timer);
 	while (readl(&port->ahci_port->ci) & (1 << slot)) {
 		if (jiffies >= timeout) {
 			printk("sd%u: timeout waiting for flush\n", port-ports);
 			port->ahci_host = NULL;
 			port->ahci_port = NULL;
-			del_timer(&command_timer);
+			del_timer(&port->command_timer);
 			port->flush = 0;
 			restore_flags(flags);
 			return -EIO;
 		}
 		sleep_on(&port->q);
 	}
-	del_timer(&command_timer);
+	del_timer(&port->command_timer);
 	restore_flags(flags);
 
 	port->flush = 0;
@@ -712,22 +712,22 @@ static int ahci_identify(const volatile struct ahci_host *ahci_host, const volat
 	writel(1 << slot, &ahci_port->ci);
 
 	timeout = jiffies + WAIT_MAX;
-	command_timer.expires = timeout;
-	command_timer.data = (unsigned long) port;
-	add_timer(&command_timer);
+	port->command_timer.expires = timeout;
+	port->command_timer.data = (unsigned long) port;
+	add_timer(&port->command_timer);
 	while (!port->status) {
 		if (jiffies >= timeout) {
 			printk("sd%u: timeout waiting for identify\n", port-ports);
 			port->ahci_host = NULL;
 			port->ahci_port = NULL;
 			port->identify = 0;
-			del_timer(&command_timer);
+			del_timer(&port->command_timer);
 			restore_flags(flags);
 			return 3;
 		}
 		sleep_on(&port->q);
 	}
-	del_timer(&command_timer);
+	del_timer(&port->command_timer);
 	restore_flags(flags);
 	port->identify = 0;
 
@@ -837,6 +837,8 @@ static void ahci_probe_port(const volatile struct ahci_host *ahci_host, const vo
 	port->command = command = mem;
 	port->fis = fis = (void*) command + cls * sizeof(*command);
 	port->prdtl = prdtl = (void*) fis + sizeof(*fis);
+
+	port->command_timer.function = command_timeout;
 
 	/* Stop commands */
 	writel(readl(&ahci_port->cmd) & ~PORT_CMD_START, &ahci_port->cmd);
