@@ -100,17 +100,27 @@ jobs:
           GNU=$(realpath ../../gnu64)
           TARGET_CPPFLAGS=-I"$GNU"/include TARGET_CC=x86_64-linux-gnu-gcc ../configure --prefix="$GNU" --target=x86_64-gnu
           make all install
-          cd ..
+          cd ../..
           if [ "$USER_H" == "i686" ]; then
-            # We need both migs
+            # We need i386 headers to build mig 32bit
+            mkdir gnu32
             mkdir build32
             cd build32
-            TARGET_CPPFLAGS=-I"$GNU"/include TARGET_CC="x86_64-linux-gnu-gcc -m32" TARGET_LD="x86_64-linux-gnu-ld -melf_i386" ../configure --prefix="$GNU" --target=i686-gnu
-            make all install
+            ../configure --prefix= --host=i686-gnu LD="x86_64-linux-gnu-ld -melf_i386" CC="x86_64-linux-gnu-gcc -m32" \
+                    --disable-linux-groups \
+                    ${{ matrix.platform }} \
+                    ${{ matrix.kdb }}
+            make DESTDIR=../gnu32 install-data
             cd ..
+            cd mig
+            mkdir build32
+            cd build32
+            GNU32=$(realpath ../../gnu32)
+            TARGET_CPPFLAGS=-I"$GNU32"/include TARGET_CC="x86_64-linux-gnu-gcc -m32" TARGET_LD="x86_64-linux-gnu-ld -melf_i386" ../configure --prefix="$GNU32" --target=i686-gnu
+            make all install
+            cd ../..
           fi
-          cd ..
-          PATH=$PATH:$GNU/bin
+          PATH=$PATH:$GNU/bin:$GNU32/bin
           cd build64
           CCASFLAGS="-fdebug-prefix-map=$PWD=." CFLAGS="-ffile-prefix-map=$PWD=." \
           ../configure --prefix= --host=x86_64-gnu \
