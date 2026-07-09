@@ -536,7 +536,7 @@ void c_boot_entry(vm_offset_t bi)
 #ifdef MACH_XEN
 	printf("Running on %s.\n", boot_info.magic);
 	if (boot_info.flags & SIF_PRIVILEGED)
-		printf("WARNING: Mach running as dom0.\n");
+		printf("WARNING: Mach running as dom0, this is not really supported yet.\n");
 #ifdef MACH_PSEUDO_PHYS
 	mfn_list = (void*)boot_info.mfn_list;
 #endif
