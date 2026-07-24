@@ -452,7 +452,11 @@ ipc_kmsg_clean_partial(
 void
 ipc_kmsg_free(ipc_kmsg_t kmsg)
 {
-	vm_size_t size = kmsg->ikm_size;
+	vm_size_t size;
+
+	assert(kmsg != IKM_NULL);
+
+	size = kmsg->ikm_size;
 
 	switch (size) {
 
