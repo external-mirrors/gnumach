@@ -52,8 +52,22 @@ jobs:
                   --disable-linux-groups \
                   ${{ matrix.platform }} \
                   ${{ matrix.kdb }}
-          make gnumach.gz
-          make VERBOSE=true check
+          set -o pipefail
+          make gnumach.gz 2>&1 | tee ../error.log
+          make VERBOSE=true check 2>&1 | tee ../error.log
+
+      - name: Email failures
+        if: failure()
+        run: |
+          echo "CI failure: gnumach i386 on commit ${{ forgejo.SHA }} with options ${{ matrix.platform }} ${{ matrix.kdb }}"
+          if [ `basename ${{ forgejo.REPOSITORY }}` == "gnumach" ] && [ ${{ forgejo.REF_NAME }} == "master" ]; then
+            gzip -9 error.log
+            echo "CI failure: gnumach i386 master on commit ${{ forgejo.SHA }} with options ${{ matrix.platform }} ${{ matrix.kdb }}" | \
+              mail -a error.log.gz -s "[CI fail]: gnumach i386 ${{ forgejo.SHA }} (${{ matrix.platform }} ${{ matrix.kdb }})" \
+                commit-hurd@gnu.org
+          fi
+          exit 1
+
   x86_64:
     runs-on: self
     strategy:
@@ -101,9 +115,10 @@ jobs:
           TARGET_CPPFLAGS=-I"$GNU"/include TARGET_CC=x86_64-linux-gnu-gcc ../configure --prefix="$GNU" --target=x86_64-gnu
           make all install
           cd ../..
+          mkdir gnu32
+          GNU32=$(realpath gnu32)
           if [ "$USER_H" == "i686" ]; then
             # We need i386 headers to build mig 32bit
-            mkdir gnu32
             mkdir build32
             cd build32
             ../configure --prefix= --host=i686-gnu LD="x86_64-linux-gnu-ld -melf_i386" CC="x86_64-linux-gnu-gcc -m32" \
@@ -115,7 +130,6 @@ jobs:
             cd mig
             mkdir build32
             cd build32
-            GNU32=$(realpath ../../gnu32)
             TARGET_CPPFLAGS=-I"$GNU32"/include TARGET_CC="x86_64-linux-gnu-gcc -m32" TARGET_LD="x86_64-linux-gnu-ld -melf_i386" ../configure --prefix="$GNU32" --target=i686-gnu
             make all install
             cd ../..
@@ -130,5 +144,18 @@ jobs:
                   ${{ matrix.platform }} \
                   ${{ matrix.user32 }} \
                   ${{ matrix.kdb }}
-          make gnumach.gz
-          make VERBOSE=true check
+          set -o pipefail
+          make gnumach.gz 2>&1 | tee ../error.log
+          make VERBOSE=true check 2>&1 | tee ../error.log
+
+      - name: Email failures
+        if: failure()
+        run: |
+          echo "CI failure: gnumach amd64 on commit ${{ forgejo.SHA }} with options ${{ matrix.platform }} ${{ matrix.user32 }} ${{ matrix.kdb }}"
+          if [ `basename ${{ forgejo.REPOSITORY }}` == "gnumach" ] && [ ${{ forgejo.REF_NAME }} == "master" ]; then
+            gzip -9 error.log
+            echo "CI failure: gnumach amd64 master on commit ${{ forgejo.SHA }} with options ${{ matrix.platform }} ${{ matrix.user32 }} ${{ matrix.kdb }}" | \
+              mail -a error.log.gz -s "[CI fail]: gnumach amd64 ${{ forgejo.SHA }} (${{ matrix.platform }} ${{ matrix.user32 }} ${{ matrix.kdb }})" \
+                commit-hurd@gnu.org
+          fi
+          exit 1
