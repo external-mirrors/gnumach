@@ -23,6 +23,7 @@
 #include <i386/smp.h>
 #include <i386/cpu.h>
 #include <i386/pio.h>
+#include <i386/pit.h>
 #include <i386/vm_param.h>
 #include <i386at/idt.h>
 #include <i386at/cram.h>
@@ -138,13 +139,13 @@ smp_send_ipi_startup_twice(int bsp_apic_id, int vector)
          */
         apic_send_ipi(ALL_EXCLUDING_SELF, STARTUP, PHYSICAL, DE_ASSERT, EDGE, vector, bsp_apic_id);
 
-        hpet_udelay(10);
+        pit_udelay(10);
 
         /* Wait for other cpu to accept IPI */
         wait_for_ipi();
         send_err = lapic->error_status.r;
 
-        hpet_udelay(10);
+        pit_udelay(10);
 
         lapic->error_status.r = 0;
         accept_err = lapic->error_status.r & 0xef;

@@ -87,6 +87,10 @@ WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 #if	defined(AT386) || defined(ATX86_64)
 #define CLKNUM		1193182
+
+/* PIT counter is 16bit, so max microseconds is:
+ * 0xffffll ticks * 1000000 usec per sec / 1193182 ticks per sec */
+#define MAX_PIT_USEC	54924
 #endif	/* AT386 */
 
 extern void clkstart(void);

@@ -66,10 +66,10 @@ int pit0_mode = PIT_C0|PIT_SQUAREMODE|PIT_READMODE ;
 unsigned int clknumb = CLKNUM;		/* interrupt interval for timer 0 */
 
 void
-pit_prepare_sleep(int persec)
+pit_prepare_sleep(int usec)
 {
     /* Prepare to sleep for 1/persec seconds */
-    uint32_t val = 0;
+    uint64_t val = 0;
     uint8_t lsb, msb;
 
     val = inb(PITAUX_PORT);
@@ -77,7 +77,7 @@ pit_prepare_sleep(int persec)
     val |= PITAUX_GATE2;
     outb (PITAUX_PORT, val);
     outb (PITCTL_PORT, PIT_C2 | PIT_LOADMODE | PIT_ONESHOTMODE);
-    val = CLKNUM / persec;
+    val = (uint64_t)CLKNUM * usec / 1000000;
     lsb = val & 0xff;
     msb = val >> 8;
     outb (PITCTR2_PORT, lsb);
@@ -104,15 +104,19 @@ pit_sleep(void)
 void
 pit_udelay(int usec)
 {
-    pit_prepare_sleep(1000000 / usec);
+    while (usec > MAX_PIT_USEC) {
+        pit_prepare_sleep(MAX_PIT_USEC);
+        pit_sleep();
+        usec -= MAX_PIT_USEC;
+    }
+    pit_prepare_sleep(usec);
     pit_sleep();
 }
 
 void
 pit_mdelay(int msec)
 {
-    pit_prepare_sleep(1000 / msec);
-    pit_sleep();
+    pit_udelay(1000 * msec);
 }
 
 void
