@@ -423,7 +423,10 @@ hpet_init(void)
     uint32_t period;
     uint32_t val;
 
-    assert(hpet_addr != 0);
+    if (hpet_addr == 0) {
+        printf("HPET not available\n");
+        return;
+    }
 
     /* Find out how often the HPET ticks in nanoseconds */
     period = HPET32(HPET_CAP_PERIOD);
@@ -484,12 +487,11 @@ hpet_mdelay(uint32_t ms)
 uint32_t
 hpclock_read_counter(void)
 {
-    /* We assume the APIC machines have HPET.  */
 #ifdef APIC
-    return HPET32(HPET_COUNTER);
-#else
-    return 0;
+    if (hpet_addr)
+        return HPET32(HPET_COUNTER);
 #endif
+    return 0;
 }
 
 uint32_t
