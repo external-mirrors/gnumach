@@ -40,6 +40,23 @@ static struct acpi_apic *apic_madt = NULL;
 unsigned lapic_addr;
 uint32_t *hpet_addr;
 
+const char *
+acpi_error_string(int err)
+{
+    switch (err) {
+    case ACPI_BAD_CHECKSUM:  return "bad ACPI table checksum";
+    case ACPI_BAD_ALIGN:     return "bad ACPI RSDP alignment";
+    case ACPI_NO_RSDP:       return "no ACPI RSDP found";
+    case ACPI_NO_RSDT:       return "no ACPI RSDT/XSDT found";
+    case ACPI_BAD_SIGNATURE: return "bad ACPI table signature";
+    case ACPI_NO_APIC:       return "no APIC/MADT table found";
+    case ACPI_NO_LAPIC:      return "cannot map the Local APIC";
+    case ACPI_APIC_FAILURE:  return "no usable APIC CPU topology";
+    case ACPI_FIT_FAILURE:   return "cannot size the accepted CPU list";
+    default:                 return "unknown ACPI/APIC error";
+    }
+}
+
 /* Retains a copy of the detected and validated system RSDP. */
 static struct acpi_rsdp2 acpi_rsdp_store;
 

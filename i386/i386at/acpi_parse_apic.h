@@ -196,6 +196,7 @@ struct acpi_hpet {
 
 int acpi_apic_init(void);
 void acpi_print_info(phys_addr_t rsdp, void *rsdt, int acpi_rsdt_n);
+const char *acpi_error_string(int err);
 
 extern unsigned lapic_addr;
 
