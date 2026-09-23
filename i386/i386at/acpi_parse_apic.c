@@ -419,12 +419,23 @@ acpi_get_apic2(struct acpi_xsdt *xsdt, int acpi_xsdt_n)
 static void
 acpi_apic_add_lapic(struct acpi_apic_lapic *lapic_entry)
 {
+    uint16_t apic_id;
+    int i;
+
     /* If cpu flag is correct */
-    if (lapic_entry->flags & (ACPI_LAPIC_FLAG_ENABLED | ACPI_LAPIC_FLAG_CAPABLE)) {
-        /* Add cpu to processors' list. */
-        apic_add_cpu(lapic_entry->apic_id & apic_id_mask);
+    if (!(lapic_entry->flags & (ACPI_LAPIC_FLAG_ENABLED | ACPI_LAPIC_FLAG_CAPABLE)))
+        return;
+
+    apic_id = lapic_entry->apic_id & apic_id_mask;
+
+    for (i = 0; i < apic_get_numcpus(); i++) {
+        if (apic_get_cpu_apic_id(i) == apic_id)
+            return;
     }
 
+    if (apic_add_cpu(apic_id) != 0)
+        printf("APIC: ignoring LAPIC ID %#x: NCPUS=%d limit reached\n",
+               apic_id, NCPUS);
 }
 
 /*
@@ -489,7 +500,6 @@ acpi_apic_parse_table(struct acpi_apic *apic)
 {
     struct acpi_apic_dhdr *apic_entry = NULL;
     vm_offset_t end = 0;
-    uint8_t numcpus = 1;
 
     /* Get the address of first APIC entry */
     apic_entry = (struct acpi_apic_dhdr*) apic->entry;
@@ -498,9 +508,6 @@ acpi_apic_parse_table(struct acpi_apic *apic)
     end = (vm_offset_t) apic + apic->header.length;
 
     printf("APIC entry=0x%p end=0x%x\n", apic_entry, end);
-
-    /* Initialize number of cpus */
-    numcpus = apic_get_numcpus();
 
     while ((vm_offset_t)apic_entry + sizeof(struct acpi_apic_dhdr) <= end) {
         struct acpi_apic_lapic *lapic_entry;
@@ -520,11 +527,8 @@ acpi_apic_parse_table(struct acpi_apic *apic)
 
         /* If APIC entry is a CPU's Local APIC. */
         case ACPI_APIC_ENTRY_LAPIC:
-            if(numcpus < NCPUS) {
-                /* Store Local APIC data. */
-                lapic_entry = (struct acpi_apic_lapic*) apic_entry;
-                acpi_apic_add_lapic(lapic_entry);
-            }
+            lapic_entry = (struct acpi_apic_lapic*) apic_entry;
+            acpi_apic_add_lapic(lapic_entry);
             break;
 
         /* If APIC entry is an IOAPIC. */
@@ -561,9 +565,6 @@ acpi_apic_parse_table(struct acpi_apic *apic)
         /* Get next APIC entry. */
         apic_entry = (struct acpi_apic_dhdr*)((vm_offset_t) apic_entry
                                               + apic_entry->length);
-
-        /* Update number of cpus. */
-        numcpus = apic_get_numcpus();
     }
 
     return ACPI_SUCCESS;
@@ -601,6 +602,9 @@ acpi_apic_setup(struct acpi_apic *apic)
     apic_lapic_init(lapic_unit);
 
     fix_apic_id_mask();
+
+    if (apic_add_cpu(apic_get_current_cpu()) != 0)
+        return ACPI_APIC_FAILURE;
 
     acpi_apic_parse_table(apic);
 
