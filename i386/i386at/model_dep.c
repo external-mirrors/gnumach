@@ -169,8 +169,8 @@ void machine_init(void)
 
 	err = acpi_apic_init();
 	if (err) {
-		printf("acpi_apic_init failed with %d\n", err);
-		for (;;);
+		panic("GNU Mach: APIC initialization failed (%d: %s)",
+		      err, acpi_error_string(err));
 	}
 #endif
 #if (NCPUS > 1)
