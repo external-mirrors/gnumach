@@ -168,6 +168,11 @@ apboot32:
 	andb	%cs:apic_id_mask, %bl
 	movl	%cs:CX(cpu_id_lut, %ebx), %ebp
 
+	testl	%ebp, %ebp
+	js	apboot_park
+	cmpl	$NCPUS, %ebp
+	jae	apboot_park
+
 	/* Copy first gdt descriptor and gdt to cpu-th area */
 	movl	$(GDT_DESCR_M32 + GDT_TABLE_M32), %ecx
 	movl	$apboot_gdt_top, %esi
@@ -275,6 +280,13 @@ gdt_tmp:
 apboot_jmp_offset:
 	.long RELOC(apboot32)
 	.word BOOT_CS
+
+.align 16
+apboot_park:
+	cli
+apboot_park_loop:
+	hlt
+	jmp	apboot_park_loop
 
 apbootend:
 #endif

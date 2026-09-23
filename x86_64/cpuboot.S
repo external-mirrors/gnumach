@@ -216,6 +216,11 @@ switch64:
 	movq	$cpu_id_lut, %rdi
 	movl	%cs:(%rdi, %rbx, 4), %ebp
 
+	testl	%ebp, %ebp
+	js	apboot_park
+	cmpl	$NCPUS, %ebp
+	jae	apboot_park
+
 	/* set up mini stack to do far return */
 	movq	$EXT(int_stack_top), %rdi
 	movq	(%rdi, %rbp, 8), %rsp
@@ -243,6 +248,11 @@ start64:
 	andb	%cs:apic_id_mask, %bl
 	movq	$cpu_id_lut, %rdi
 	movl	%cs:(%rdi, %rbx, 4), %ebp
+
+	testl	%ebp, %ebp
+	js	apboot_park
+	cmpl	$NCPUS, %ebp
+	jae	apboot_park
 
 	/* Access per_cpu area */
 	movq	%rbp, %rax
@@ -324,6 +334,13 @@ gdt_tmp:
 apboot_jmp_offset:
 	.long RELOC(apboot32)
 	.word BOOT_CS
+
+.align 16
+apboot_park:
+	cli
+apboot_park_loop:
+	hlt
+	jmp	apboot_park_loop
 
 apbootend:
 
