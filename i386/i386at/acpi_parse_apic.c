@@ -502,13 +502,19 @@ acpi_apic_parse_table(struct acpi_apic *apic)
     /* Initialize number of cpus */
     numcpus = apic_get_numcpus();
 
-    /* Search in APIC entry. */
-    while ((vm_offset_t)apic_entry < end) {
+    while ((vm_offset_t)apic_entry + sizeof(struct acpi_apic_dhdr) <= end) {
         struct acpi_apic_lapic *lapic_entry;
         struct acpi_apic_ioapic *ioapic_entry;
         struct acpi_apic_irq_override *irq_override_entry;
 
         printf("APIC entry=0x%p end=0x%x\n", apic_entry, end);
+
+        if (apic_entry->length == 0) {
+            printf("APIC: zero-length MADT entry type %#x, stopping\n",
+                   apic_entry->type);
+            break;
+        }
+
         /* Check entry type. */
         switch(apic_entry->type) {
 
