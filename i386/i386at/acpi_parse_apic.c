@@ -538,10 +538,18 @@ acpi_apic_parse_table(struct acpi_apic *apic)
             acpi_apic_add_irq_override(irq_override_entry);
             break;
 
+        case ACPI_APIC_ENTRY_X2APIC:
+            printf("APIC: x2APIC entry (type %d) unsupported, ignored\n",
+                   apic_entry->type);
+            break;
+
+        case ACPI_APIC_ENTRY_NONMASK_IRQ:
+            break;
+
         /* FIXME: There is another unhandled case */
-	default:
-	    printf("Unhandled APIC entry type 0x%x\n", apic_entry->type);
-	    break;
+        default:
+            printf("Unhandled APIC entry type 0x%x\n", apic_entry->type);
+            break;
         }
 
         /* Get next APIC entry. */
