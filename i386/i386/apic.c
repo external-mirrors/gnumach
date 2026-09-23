@@ -61,10 +61,13 @@ uint8_t apic_id_mask = 0xf;
 int
 apic_data_init(void)
 {
+    int i;
+
     apic_data.cpu_lapic_list = NULL;
     apic_data.ncpus = 0;
     apic_data.nioapics = 0;
     apic_data.nirqoverride = 0;
+    apic_data.capacity = 0;
 
     /* Reserve the vector memory for the maximum number of processors. */
     apic_data.cpu_lapic_list = (uint16_t*) kalloc(NCPUS*sizeof(uint16_t));
@@ -72,6 +75,11 @@ apic_data_init(void)
     /* If the memory reserve fails, return -1 to advice about the error. */
     if (apic_data.cpu_lapic_list == NULL)
         return -1;
+
+    apic_data.capacity = NCPUS;
+
+    for (i = 0; i <= UINT8_MAX; i++)
+        cpu_id_lut[i] = -1;
 
     return 0;
 }
@@ -89,12 +97,18 @@ apic_lapic_init(ApicLocalUnit* lapic_ptr)
 /*
  * apic_add_cpu: add a new lapic/cpu entry to the cpu_lapic list.
  * Receives as input the lapic's APIC ID.
+ * Returns 0 if accepted, -1 if the list is full.
  */
-void
+int
 apic_add_cpu(uint16_t apic_id)
 {
+    if (apic_data.ncpus >= apic_data.capacity)
+        return -1;
+
     apic_data.cpu_lapic_list[apic_data.ncpus] = apic_id;
     apic_data.ncpus++;
+
+    return 0;
 }
 
 /*
@@ -139,7 +153,7 @@ acpi_get_irq_override(uint8_t pin)
 int
 apic_get_cpu_apic_id(int kernel_id)
 {
-    if (kernel_id >= NCPUS)
+    if (kernel_id < 0 || kernel_id >= apic_data.capacity)
         return -1;
 
     return apic_data.cpu_lapic_list[kernel_id];
@@ -227,8 +241,10 @@ int apic_refit_cpulist(void)
 {
     uint16_t* old_list = apic_data.cpu_lapic_list;
     uint16_t* new_list = NULL;
+    uint16_t old_capacity = apic_data.capacity;
 
-    if (old_list == NULL)
+    if (old_list == NULL || apic_data.ncpus == 0
+        || apic_data.ncpus > old_capacity)
         return -1;
 
     new_list = (uint16_t*) kalloc(apic_data.ncpus*sizeof(uint16_t));
@@ -240,7 +256,8 @@ int apic_refit_cpulist(void)
         new_list[i] = old_list[i];
 
     apic_data.cpu_lapic_list = new_list;
-    kfree((vm_offset_t) old_list, NCPUS*sizeof(uint16_t));
+    apic_data.capacity = apic_data.ncpus;
+    kfree((vm_offset_t) old_list, old_capacity*sizeof(uint16_t));
 
     return 0;
 }

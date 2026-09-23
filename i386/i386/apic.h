@@ -230,6 +230,7 @@ typedef struct ApicInfo {
         uint8_t   ncpus;
         uint8_t   nioapics;
         int       nirqoverride;
+        uint16_t  capacity;
         uint16_t* cpu_lapic_list;
         struct    IoApicData ioapic_list[MAX_IOAPICS];
         struct    IrqOverrideData irq_override_list[MAX_IRQ_OVERRIDE];
@@ -241,7 +242,7 @@ struct irqinfo {
 };
 
 int apic_data_init(void);
-void apic_add_cpu(uint16_t apic_id);
+int apic_add_cpu(uint16_t apic_id);
 void apic_lapic_init(ApicLocalUnit* lapic_ptr);
 void apic_add_ioapic(struct IoApicData);
 void apic_add_irq_override(struct IrqOverrideData irq_over);
