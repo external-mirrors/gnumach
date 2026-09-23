@@ -27,7 +27,8 @@ AC_ARG_ENABLE([pae],
 # Multiprocessor support is still broken.
 AH_TEMPLATE([MULTIPROCESSOR], [set things up for a uniprocessor])
 AC_ARG_ENABLE([ncpus],
-  AS_HELP_STRING([--enable-ncpus=N], [specify the maximum number of cpus to be supported]),
+  AS_HELP_STRING([--enable-ncpus=N], [compile-time upper bound on supported CPUs;
+    a valid APIC topology with more detected CPUs boots with min(eligible, N)]),
   [mach_ncpus=$enable_ncpus],
   [mach_ncpus=1])
 AC_DEFINE_UNQUOTED([NCPUS], [$mach_ncpus], [number of CPUs])
