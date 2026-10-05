@@ -91,7 +91,7 @@ extern spl_t curr_ipl[];
 
 
 struct lock_info *
-locate_lock_info(decl_simple_lock_data(, **lock))
+locate_lock_info(decl_simple_lock_data(, **lock), vm_offset_t caller)
 {
 	struct lock_info *li =  &(lock_info[HASH_LOCK(*lock)].info[0]);
 	int i;
@@ -102,7 +102,7 @@ locate_lock_info(decl_simple_lock_data(, **lock))
 				return(li);
 		} else {
 			li->lock = *lock;
-			li->caller = *((vm_offset_t *)lock - 1);
+			li->caller = caller;
 			return(li);
 		}
 	db_printf("out of lock_info slots\n");
@@ -113,7 +113,8 @@ locate_lock_info(decl_simple_lock_data(, **lock))
 
 void simple_lock(decl_simple_lock_data(, *lock))
 {
-	struct lock_info *li = locate_lock_info(&lock);
+	struct lock_info *li = locate_lock_info(&lock,
+						 (vm_offset_t) __builtin_return_address(0));
 	int my_cpu = cpu_number();
 
 	if (current_thread())
@@ -131,7 +132,8 @@ void simple_lock(decl_simple_lock_data(, *lock))
 
 int simple_lock_try(decl_simple_lock_data(, *lock))
 {
-	struct lock_info *li = locate_lock_info(&lock);
+	struct lock_info *li = locate_lock_info(&lock,
+						 (vm_offset_t) __builtin_return_address(0));
 	int my_cpu = cpu_number();
 
 	if (curr_ipl[my_cpu])
@@ -151,7 +153,8 @@ int simple_lock_try(decl_simple_lock_data(, *lock))
 void simple_unlock(decl_simple_lock_data(, *lock))
 {
 	time_stamp_t stamp = time_stamp;
-	time_stamp_t *time = &locate_lock_info(&lock)->time;
+	time_stamp_t *time = &locate_lock_info(&lock,
+					 (vm_offset_t) __builtin_return_address(0))->time;
 	unsigned *lock_stack;
 
 	*time = stamp - *time;
@@ -261,20 +264,14 @@ void lock_info_clear(void)
 
 static void print_lock_info(struct lock_info *li)
 {
-	db_addr_t off;
 	int sum = li->success + li->fail;
 	db_printf("%d	%d/%d	%d/%d	%d/%d	%d/%d	", li->success,
 		   li->fail, (li->fail*100)/sum,
 		   li->masked, (li->masked*100)/sum,
 		   li->stack, li->stack/sum,
 		   li->time, li->time/sum);
-	db_free_symbol(db_search_symbol((db_addr_t) li->lock, 0, &off));
-	if (off < 1024)
-		db_printsym((db_addr_t) li->lock, 0);
-	else {
-		db_printsym(li->caller, 0);
-		db_printf("(%X)", li->lock);
-	}
+	db_printsym(li->caller, DB_STGY_PROC);
+	db_printf("(%X)", li->lock);
 	db_printf("\n");
 }
 
