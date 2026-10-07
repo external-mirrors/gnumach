@@ -69,11 +69,14 @@
 int	db_output_position = 0;		/* output column */
 int	db_output_line = 0;		/* output line number */
 int	db_last_non_space = 0;		/* last non-space character */
-int	db_tab_stop_width = 8;		/* how wide are tab stops? */
+/* Accessed through db_expr_t pointers in db_variables.c. */
+db_expr_t db_tab_stop_width = 8;	/* how wide are tab stops? */
 #define	NEXT_TAB(i) \
-	((((i) + db_tab_stop_width) / db_tab_stop_width) * db_tab_stop_width)
-int	db_max_line = DB_MAX_LINE;	/* output max lines */
-int	db_max_width = DB_MAX_WIDTH;	/* output line width */
+	((db_tab_stop_width > 0) \
+	 ? ((((i) + db_tab_stop_width) / db_tab_stop_width) * db_tab_stop_width) \
+	 : (i))
+db_expr_t db_max_line = DB_MAX_LINE;	/* output max lines */
+db_expr_t db_max_width = DB_MAX_WIDTH;	/* output line width */
 
 /*
  * Force pending whitespace.
@@ -85,6 +88,12 @@ db_force_whitespace(void)
 
 	last_print = db_last_non_space;
 	while (last_print < db_output_position) {
+	    if (db_tab_stop_width <= 0) {
+		/* Use spaces because NEXT_TAB() cannot advance at this width. */
+		cnputc(' ');
+		last_print++;
+		continue;
+	    }
 	    next_tab = NEXT_TAB(last_print);
 	    if (next_tab <= db_output_position) {
 		cnputc('\t');
